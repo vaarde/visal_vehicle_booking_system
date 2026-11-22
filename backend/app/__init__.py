@@ -42,6 +42,7 @@ def create_app(config_class=None):
     from .routes.support import support_bp
     from .routes.broadcast import broadcast_bp
     from .routes.reports import reports_bp
+    from .routes.staff_import import staff_import_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(bookings_bp)
@@ -52,6 +53,7 @@ def create_app(config_class=None):
     app.register_blueprint(support_bp)
     app.register_blueprint(broadcast_bp)
     app.register_blueprint(reports_bp)
+    app.register_blueprint(staff_import_bp)
 
     # JWT token initialization
     jwt = JWTManager(app)
