@@ -1,21 +1,36 @@
+import logging
 import os
+import secrets
 from datetime import timedelta
 from dotenv import load_dotenv
 
-load_dotenv()  # add this
+load_dotenv()
+
+_log = logging.getLogger(__name__)
+
+
+def _secret_from_env(name):
+    """
+    Read a signing secret from the environment. If it is missing we generate a
+    random one for this process rather than falling back to a guessable default.
+    Tokens then stop working after a restart, which makes the misconfiguration
+    obvious without leaving the app signing tokens with a public key.
+    """
+    value = os.getenv(name)
+    if value:
+        return value
+    _log.warning("%s is not set - using a random per-process value. Set it in the environment.", name)
+    return secrets.token_urlsafe(48)
 
 
 class Config:
     # Flask application settings
-    SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key")
-    JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-jwt-secret")
+    SECRET_KEY = _secret_from_env("SECRET_KEY")
+    JWT_SECRET_KEY = _secret_from_env("JWT_SECRET_KEY")
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=int(os.getenv("JWT_ACCESS_TOKEN_EXPIRES_HOURS", "8")))
 
-    # Database configuration - uses environment variable, falls back to local dev
-    SQLALCHEMY_DATABASE_URI = os.getenv(
-        "DATABASE_URL",
-        "postgresql://postgres:brainstorm@localhost:5432/vehicle_booking"
-    )
+    # Database configuration - DATABASE_URL is required (checked in create_app).
+    SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL")
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
     # Flask-Mail configuration for Gmail SMTP
@@ -36,6 +51,10 @@ class Config:
     BOOKING_SUMMARY_HOUR = int(os.getenv("BOOKING_SUMMARY_HOUR", "17"))
     START_EMAIL_SCHEDULER = os.getenv("START_EMAIL_SCHEDULER", "True").lower() == "true"
 
+    # Login throttling: max failed attempts per (staff_id, IP) within the window
+    LOGIN_MAX_ATTEMPTS = int(os.getenv("LOGIN_MAX_ATTEMPTS", "5"))
+    LOGIN_WINDOW_SECONDS = int(os.getenv("LOGIN_WINDOW_SECONDS", "900"))
+
     # CORS configuration - production ready
     CORS_ORIGINS = os.getenv("CORS_ORIGINS", "https://book-beta.vaarde.com,http://localhost:5173,http://127.0.0.1:5173").split(",")
     CORS_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
@@ -53,6 +72,9 @@ class TestConfig:
     # Use in-memory SQLite for tests
     SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+
+    LOGIN_MAX_ATTEMPTS = 3
+    LOGIN_WINDOW_SECONDS = 900
 
     # Suppress actual email sending in tests
     MAIL_SUPPRESS_SEND = True

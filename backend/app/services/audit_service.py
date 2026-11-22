@@ -2,8 +2,15 @@ from .. import db
 from ..models.audit_log import AuditLog
 
 
-def log_action(actor_id=None, actor_name=None, action=None, target_type=None, target_id=None, description=None):
-    """Record an audit trail entry. Never raises — a logging failure should not break the calling request."""
+def log_action(
+    actor_id=None, actor_name=None, action=None, target_type=None, target_id=None, description=None, commit=True
+):
+    """
+    Record an audit trail entry. Never raises - a logging failure should not break the calling request.
+
+    Pass commit=False to write the entry in the caller's transaction, so it is saved (or rolled back)
+    together with the change it describes.
+    """
     try:
         entry = AuditLog(
             actor_id=actor_id,
@@ -14,6 +21,8 @@ def log_action(actor_id=None, actor_name=None, action=None, target_type=None, ta
             description=description,
         )
         db.session.add(entry)
-        db.session.commit()
+        if commit:
+            db.session.commit()
     except Exception:
-        db.session.rollback()
+        if commit:
+            db.session.rollback()

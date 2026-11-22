@@ -2,7 +2,9 @@ from datetime import datetime, timedelta
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity, get_jwt
 from .. import db
-from ..models.users import User
+from ..models.token_blocklist import TokenBlocklist
+from ..models.users import Roles, User
+from ..services import login_throttle
 from ..services.audit_service import log_action
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/auth")
@@ -36,11 +38,14 @@ def register():
     password = data.get("password")
     phone_number = data.get("phone_number")
     department = data.get("department")
-    role = data.get("role", "staff")
+    role = str(data.get("role", Roles.STAFF)).strip().lower()
 
     # Validate required fields
     if not staff_id or not full_name or not email or not password:
         return jsonify({"error": "staff_id, full_name, email, and password are required"}), 400
+
+    if role not in Roles.ALL:
+        return jsonify({"error": f"role must be one of: {', '.join(Roles.ALL)}"}), 400
 
     # Check if staff_id already exists
     if User.query.get(staff_id):
@@ -89,14 +94,17 @@ def login():
     if not staff_id or not password:
         return jsonify({"error": "Staff ID and password are required"}), 400
 
+    client_ip = request.remote_addr or "unknown"
+    login_throttle.ensure_not_locked(staff_id, client_ip)
+
     # Look up the user
     user = User.query.get(staff_id)
 
-    if not user:
+    if not user or not user.check_password(password):
+        login_throttle.record_failure(staff_id, client_ip)
         return jsonify({"error": "Invalid credentials"}), 401
 
-    if not user.check_password(password):
-        return jsonify({"error": "Invalid credentials"}), 401
+    login_throttle.reset(staff_id, client_ip)
 
     if user.status != "active":
         return jsonify({"error": "This account has been deactivated. Contact an administrator."}), 403
@@ -136,6 +144,16 @@ def login():
 def logout():
     claims = get_jwt()
     staff_id = get_jwt_identity()
+
+    # Revoke this token so it stops working immediately, not just when it expires.
+    db.session.add(TokenBlocklist(
+        jti=claims["jti"],
+        staff_id=staff_id,
+        expires_at=datetime.utcfromtimestamp(claims["exp"]),
+    ))
+    # Drop entries for tokens that have expired anyway, so the table does not grow forever.
+    TokenBlocklist.query.filter(TokenBlocklist.expires_at < datetime.utcnow()).delete()
+    db.session.commit()
 
     log_action(
         actor_id=staff_id,
@@ -310,7 +328,7 @@ def update_user(staff_id):
     email = str(data.get("email", user.email)).lower().strip()
     phone_number = data.get("phone_number", user.phone_number)
     department = data.get("department", user.department)
-    role = data.get("role", user.role)
+    role = str(data.get("role", user.role)).strip().lower()
     new_staff_id = str(data.get("staff_id", user.staff_id)).strip()
 
     if not full_name or not email:
@@ -318,6 +336,9 @@ def update_user(staff_id):
 
     if not new_staff_id:
         return jsonify({"error": "staff_id cannot be empty"}), 400
+
+    if role not in Roles.ALL:
+        return jsonify({"error": f"role must be one of: {', '.join(Roles.ALL)}"}), 400
 
     existing = User.query.filter_by(email=email).first()
     if existing and existing.staff_id != user.staff_id:

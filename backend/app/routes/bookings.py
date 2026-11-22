@@ -130,7 +130,11 @@ def create_booking():
 
 # GET USER BOOKINGS BY ID
 @bookings_bp.route("/staff/<staff_id>", methods=["GET"])
+@jwt_required()
 def get_bookings_by_staff(staff_id):
+    # Staff may only read their own bookings; admins may read anyone's.
+    if staff_id != get_jwt_identity() and get_jwt().get("role") != Roles.ADMIN:
+        return jsonify({"error": "You can only view your own bookings"}), 403
 
     # staff_id is now a string
     user = User.query.filter_by(staff_id=staff_id).first()
@@ -168,11 +172,15 @@ def get_bookings_by_staff(staff_id):
 
 # Get all user bookings
 @bookings_bp.route("/schedule_view", methods=["GET"])
+@jwt_required()
 def get_all_bookings():
     """
     Admin / Schedule view:
-    Returns all bookings with staff details
+    Returns all bookings with staff details. Everyone signed in can see the shared schedule, but
+    free-text notes and admin comments on other people's bookings are only visible to admins.
     """
+    viewer_id = get_jwt_identity()
+    viewer_is_admin = get_jwt().get("role") == Roles.ADMIN
 
     bookings = (
         Booking.query
@@ -194,9 +202,9 @@ def get_all_bookings():
             "end_time": booking.end_time.strftime("%H:%M"),
             "location": booking.location,
             "purpose": booking.purpose,
-            "notes": booking.notes,
+            "notes": booking.notes if (viewer_is_admin or booking.user_id == viewer_id) else None,
             "status": booking.status,
-            "admin_comment": booking.admin_comment
+            "admin_comment": booking.admin_comment if (viewer_is_admin or booking.user_id == viewer_id) else None,
         })
 
     return jsonify({
@@ -207,11 +215,14 @@ def get_all_bookings():
     # Fetch all Pending bookings
 
 @bookings_bp.route("/pending", methods=["GET"])
+@jwt_required()
 def get_pending_bookings():
     """
     Admin approval view:
     Fetch all pending bookings
     """
+    if get_jwt().get("role") != Roles.ADMIN:
+        return jsonify({"error": "Only admins can view pending bookings"}), 403
 
     pending_bookings = (
         Booking.query

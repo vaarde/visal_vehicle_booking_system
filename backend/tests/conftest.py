@@ -3,6 +3,7 @@ from app import create_app, db
 from app.models.users import User
 from app.models.bookings import Booking
 from app.models.notifications import Notification
+from app.services import login_throttle
 from config import TestConfig
 
 
@@ -10,6 +11,7 @@ from config import TestConfig
 def app():
     """Create and configure a test app instance."""
     app = create_app(TestConfig)
+    login_throttle.clear_all()
 
     with app.app_context():
         db.create_all()

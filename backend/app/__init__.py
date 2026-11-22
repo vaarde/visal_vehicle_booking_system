@@ -1,5 +1,5 @@
 # app/__init__.py
-from flask import Flask, make_response
+from flask import Flask, jsonify, make_response
 from .extensions import db, migrate, mail
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
@@ -14,6 +14,9 @@ def create_app(config_class=None):
     else:
         app.config.from_object(config_class)
 
+    if not app.config.get("SQLALCHEMY_DATABASE_URI"):
+        raise RuntimeError("DATABASE_URL is not set. Add it to the environment or backend/.env.")
+
     # Initialize extensions
     db.init_app(app)
     migrate.init_app(app, db)
@@ -27,6 +30,7 @@ def create_app(config_class=None):
     from .models.audit_log import AuditLog
     from .models.app_settings import AppSettings
     from .models.support_message import SupportMessage
+    from .models.token_blocklist import TokenBlocklist
 
     # Register blueprints
     from .routes.auth import auth_bp
@@ -49,6 +53,31 @@ def create_app(config_class=None):
 
     # JWT token initialization
     jwt = JWTManager(app)
+
+    @jwt.token_in_blocklist_loader
+    def is_token_revoked(jwt_header, jwt_payload):
+        """
+        Reject a token when it was logged out, its account was deactivated or
+        deleted, or the user's role changed since it was issued (forces a re-login
+        so stale privileges can't outlive an admin's change).
+        """
+        if TokenBlocklist.query.filter_by(jti=jwt_payload["jti"]).first():
+            return True
+        user = db.session.get(User, jwt_payload["sub"])
+        if user is None or user.status != "active":
+            return True
+        claimed_role = jwt_payload.get("role")
+        return claimed_role is not None and claimed_role != user.role
+
+    from .exceptions import AppError
+
+    @app.errorhandler(AppError)
+    def handle_app_error(error):
+        return jsonify({"error": error.message}), error.status_code
+
+    @jwt.revoked_token_loader
+    def revoked_token_response(jwt_header, jwt_payload):
+        return jsonify({"error": "Session is no longer valid. Please sign in again."}), 401
 
     # Enable CORS with configuration from config
     CORS(app,
