@@ -36,13 +36,17 @@ A full-stack vehicle booking management system for staff vehicle requests and ad
 - Add comments to decisions
 - View all bookings and schedule conflicts
 - Register new staff accounts
-- Access reports and analytics (coming soon)
+- Reports and analytics: approval rates, booked hours, demand by hour and department, with CSV export
+- Bulk-import staff from a CSV file (checked first, then confirmed)
+- Settings for booking rules, schedule defaults, notifications and audit-log retention
+- Support inbox, broadcast email and an audit trail
 
 ### 🔐 Security & Notifications
 - Role-based access control (Staff/Admin)
-- JWT authentication with protected routes
+- JWT authentication with protected routes; sessions end immediately on logout, deactivation or a role change
+- Login lockout after repeated failed attempts
 - Automatic email notifications for approvals/declines
-- Daily summary emails for late bookings
+- Daily summary email to admins (sent once a day, at the hour set in Settings)
 - In-app notification system
 
 ---
@@ -89,7 +93,9 @@ A full-stack vehicle booking management system for staff vehicle requests and ad
    python -m venv .venv
    .\.venv\Scripts\Activate.ps1
    pip install -r requirements.txt
-   # Configure .env file (see backend/backend_documentation.md)
+   # Create backend/.env - DATABASE_URL is required; also set SECRET_KEY and
+   # JWT_SECRET_KEY (see backend/backend_documentation.md for every variable)
+   $env:PYTHONPATH = "."; alembic upgrade head   # apply migrations to your LOCAL database
    python run.py
    ```
 
@@ -125,9 +131,8 @@ These files contain comprehensive guides for development, API usage, and project
 ### Backend Tests
 ```bash
 cd backend
-.\venv\Scripts\Activate.ps1
-python run_tests.py
-# Or: python -m pytest --cov=app --cov-report=html
+.\.venv\Scripts\Activate.ps1
+python -m pytest
 ```
 
 ### Frontend Tests
@@ -140,9 +145,10 @@ npm run test
 
 ## 🔮 Future Improvements
 
-- Automatic booking conflict detection
-- Enhanced admin dashboard analytics
-- Mobile-responsive design improvements
+- Vehicles and drivers (assign a vehicle to a booking, detect double-booking, maintenance blocks)
+- Booking edit/reschedule and a trip lifecycle (started, completed, no-show)
+- Password reset
+- Move the login token out of localStorage (see issue #15)
 - Docker containerization
 
 ---
