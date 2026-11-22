@@ -1,4 +1,5 @@
 import pytest
+from datetime import datetime, timedelta
 import json
 from unittest.mock import patch, MagicMock
 from flask_jwt_extended import create_access_token
@@ -274,6 +275,9 @@ class TestBookingNotifications:
     def test_approve_booking_updates_timestamp(self, client, test_admin, test_booking):
         """Test that approving a booking updates the updated_at timestamp."""
         with client.application.app_context():
+            # backdate it so the assertion does not depend on the clock ticking between two fast calls
+            test_booking.updated_at = datetime.utcnow() - timedelta(hours=1)
+            db.session.commit()
             original_updated_at = test_booking.updated_at
 
             access_token = create_access_token(identity=test_admin.staff_id, additional_claims={'role': 'admin'})
@@ -293,6 +297,9 @@ class TestBookingNotifications:
     def test_decline_booking_updates_timestamp(self, client, test_admin, test_booking):
         """Test that declining a booking updates the updated_at timestamp."""
         with client.application.app_context():
+            # backdate it so the assertion does not depend on the clock ticking between two fast calls
+            test_booking.updated_at = datetime.utcnow() - timedelta(hours=1)
+            db.session.commit()
             original_updated_at = test_booking.updated_at
 
             access_token = create_access_token(identity=test_admin.staff_id, additional_claims={'role': 'admin'})
