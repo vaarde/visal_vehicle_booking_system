@@ -55,9 +55,9 @@ def main():
         print(f"Sending approval email to: {args.email}")
         success = send_booking_notification(args.email, subject, body)
         if success:
-            print("✅ Test approval email sent successfully.")
+            print("Test approval email sent successfully.")
         else:
-            print("❌ Failed to send test approval email. Check backend logs and SMTP configuration.")
+            print("Failed to send test approval email. Check backend logs and SMTP configuration.")
 
 
 if __name__ == "__main__":

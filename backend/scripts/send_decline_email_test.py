@@ -55,9 +55,9 @@ def main():
         print(f"Sending decline email to: {args.email}")
         success = send_booking_notification(args.email, subject, body)
         if success:
-            print("✅ Test decline email sent successfully.")
+            print("Test decline email sent successfully.")
         else:
-            print("❌ Failed to send test decline email. Check backend logs and SMTP configuration.")
+            print("Failed to send test decline email. Check backend logs and SMTP configuration.")
 
 
 if __name__ == "__main__":
