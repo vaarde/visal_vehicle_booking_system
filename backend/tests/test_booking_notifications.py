@@ -69,7 +69,7 @@ class TestBookingNotifications:
             assert updated_booking.status == 'Declined'
             assert updated_booking.admin_comment == 'Declined for testing'
 
-    @patch('app.routes.bookings.send_booking_notification')
+    @patch('app.services.booking_service.send_booking_notification')
     def test_approve_booking_sends_email(self, mock_send_email, client, test_admin, test_booking):
         """Test that approving a booking sends an email notification."""
         with client.application.app_context():
@@ -92,7 +92,7 @@ class TestBookingNotifications:
             assert 'Booking Approved' in call_args[0][1]  # subject
             assert 'Approved for testing' in call_args[0][2]  # body
 
-    @patch('app.routes.bookings.send_booking_notification')
+    @patch('app.services.booking_service.send_booking_notification')
     def test_decline_booking_sends_email(self, mock_send_email, client, test_admin, test_booking):
         """Test that declining a booking sends an email notification."""
         with client.application.app_context():

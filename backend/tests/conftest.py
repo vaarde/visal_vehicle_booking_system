@@ -61,10 +61,11 @@ def test_admin(app):
 @pytest.fixture
 def test_booking(app, test_user):
     """Create a test booking."""
-    from datetime import date, time
+    from datetime import date, time, timedelta
+    # tomorrow, so approving it never depends on what time of day the tests run
     booking = Booking(
         user_id=test_user.staff_id,
-        booking_date=date.today(),
+        booking_date=date.today() + timedelta(days=1),
         start_time=time(10, 0),
         end_time=time(12, 0),
         location='Test Location',
