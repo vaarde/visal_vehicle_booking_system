@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify
-from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt
+from flask_jwt_extended import jwt_required, get_jwt_identity, get_jwt, verify_jwt_in_request
 from ..models.changelog import Changelog
 from ..models.users import User, Roles
 from .. import db
@@ -16,7 +16,13 @@ def get_changelogs():
     Optional query param: include_unpublished=true (admin only)
     """
     include_unpublished = request.args.get("include_unpublished", "false").lower() == "true"
-    
+
+    if include_unpublished:
+        # Drafts are for admins only. A missing, expired or revoked token is a 401 from here.
+        verify_jwt_in_request()
+        if get_jwt().get("role") != Roles.ADMIN:
+            return jsonify({"error": "Admin access required to view unpublished changelogs"}), 403
+
     try:
         if include_unpublished:
             changelogs = Changelog.query.order_by(Changelog.created_at.desc()).all()
