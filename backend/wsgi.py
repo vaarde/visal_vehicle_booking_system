@@ -1,3 +1,7 @@
+from dotenv import load_dotenv
+
 from app import create_app
 
-app = create_app('production')
+load_dotenv()
+
+app = create_app()
