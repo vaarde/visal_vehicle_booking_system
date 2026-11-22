@@ -25,8 +25,11 @@ class AppSettings(db.Model):
     daily_summary_enabled = db.Column(db.Boolean, nullable=False, default=True)
     daily_summary_hour = db.Column(db.Integer, nullable=False, default=17)
 
-    # Audit log (stored only — not enforced yet)
+    # Audit log retention - entries older than this are purged by the maintenance job (None = keep forever)
     audit_log_retention_days = db.Column(db.Integer, nullable=True)
+
+    # Date the daily summary email was last sent. Claimed atomically so several workers never double-send.
+    last_summary_sent_on = db.Column(db.Date, nullable=True)
 
     # Approval workflow
     require_decline_reason = db.Column(db.Boolean, nullable=False, default=True)

@@ -1,52 +1,50 @@
 import threading
 import time
-from datetime import datetime, timedelta, time as time_cls
+from datetime import date, datetime
+
 from flask import current_app
 
-from .email_service import send_daily_booking_summary
-from .settings_service import get_settings
+from .maintenance_service import purge_old_audit_logs, run_daily_summary
+
+CHECK_INTERVAL_SECONDS = 60
 
 
-def _seconds_until_next_run(app):
-    now = datetime.now()
-    settings = get_settings()
+def run_tick(now=None, last_purge_date=None):
+    """
+    One scheduler pass: send the summary if it is due, and purge old audit entries once a day.
+    Returns the date of the last purge so the caller can pass it back in next time.
+    """
+    now = now or datetime.now()
 
-    if not settings.daily_summary_enabled:
-        # not enabled right now — recheck in a day in case it gets turned back on
-        return 86400, now + timedelta(days=1)
+    status = run_daily_summary(now)
+    if status == "sent":
+        current_app.logger.info("Daily booking summary sent")
+    elif status == "failed":
+        current_app.logger.error("Daily booking summary could not be sent")
 
-    target_time = time_cls(settings.daily_summary_hour, 0)
-    target = datetime.combine(now.date(), target_time)
-
-    if now >= target:
-        target += timedelta(days=1)
-
-    return (target - now).total_seconds(), target
+    if last_purge_date != now.date():
+        purge_old_audit_logs()
+        last_purge_date = now.date()
+    return last_purge_date
 
 
 def _scheduler_loop(app):
+    """
+    Wakes every minute instead of sleeping until a fixed time, so a changed summary hour takes
+    effect straight away and an app that was asleep at the scheduled time still sends later that day.
+    Duplicates across workers are prevented by the database claim in maintenance_service.
+
+    It waits one interval before the first tick, so short-lived processes that merely build the app
+    (migrations, `flask` commands) exit before they could ever send anything.
+    """
+    last_purge_date: date | None = None
     with app.app_context():
         while True:
-            seconds, target = _seconds_until_next_run(app)
-            current_app.logger.info(
-                f"Daily booking summary scheduler: next run at {target.isoformat()} ({int(seconds)} seconds from now)"
-            )
-            time.sleep(seconds)
-
-            if not get_settings().daily_summary_enabled:
-                current_app.logger.info("Daily booking summary is disabled — skipping this run")
-                time.sleep(60)
-                continue
-
+            time.sleep(CHECK_INTERVAL_SECONDS)
             try:
-                current_app.logger.info("Running daily booking summary task...")
-                send_daily_booking_summary()
-                current_app.logger.info("Daily booking summary task completed")
+                last_purge_date = run_tick(last_purge_date=last_purge_date)
             except Exception as exc:
-                current_app.logger.error(f"Daily booking summary task failed: {exc}")
-
-            # small buffer so the loop recalculates the next run time cleanly
-            time.sleep(60)
+                current_app.logger.error(f"Scheduled maintenance failed: {exc}")
 
 
 def start_daily_summary_scheduler(app):

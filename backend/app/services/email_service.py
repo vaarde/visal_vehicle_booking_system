@@ -1,3 +1,5 @@
+import threading
+
 from flask_mail import Message
 from flask import current_app
 from ..extensions import mail
@@ -5,6 +7,29 @@ from datetime import datetime
 from ..models.bookings import Booking
 from ..models.users import User, Roles
 from .settings_service import get_settings
+
+
+def _deliver(msg):
+    """
+    Hand a message to the mail server. Outside of tests this happens on a background thread so the
+    request (for example an admin approving a booking) is not held up by a slow SMTP server; a failure
+    is logged. Under TESTING it is sent immediately so tests can assert on the result.
+    """
+    app = current_app._get_current_object()
+    if app.config.get("TESTING"):
+        mail.send(msg)
+        app.logger.info(f"Email sent successfully to {', '.join(msg.recipients)}")
+        return
+
+    def _worker():
+        with app.app_context():
+            try:
+                mail.send(msg)
+                app.logger.info(f"Email sent successfully to {', '.join(msg.recipients)}")
+            except Exception as exc:
+                app.logger.error(f"Failed to send email to {', '.join(msg.recipients)}: {exc}")
+
+    threading.Thread(target=_worker, daemon=True).start()
 
 
 def send_booking_notification(user_email, subject, body, is_approved=True, booking_details=None):
@@ -24,8 +49,7 @@ def send_booking_notification(user_email, subject, body, is_approved=True, booki
             body=body,
             html=html_body
         )
-        mail.send(msg)
-        current_app.logger.info(f"Email sent successfully to {user_email}")
+        _deliver(msg)
         return True
     except Exception as e:
         current_app.logger.error(f"Failed to send email to {user_email}: {str(e)}")

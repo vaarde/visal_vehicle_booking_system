@@ -90,4 +90,8 @@ def create_app(config_class=None):
         from .services.summary_scheduler import start_daily_summary_scheduler
         start_daily_summary_scheduler(app)
 
+    from .cli import register_cli
+
+    register_cli(app)
+
     return app
