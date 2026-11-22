@@ -37,50 +37,54 @@ const STATUS_COLORS = {
   approved: "#1f8f63",
   pending: "#c88810",
   declined: "#cc4a43",
+  cancelled: "#64748b",
 };
 
 const CHART_COLORS = ["#1768db", "#1f8f63", "#c88810", "#cc4a43", "#7c3aed", "#0d9488"];
 const TABLE_PAGE_SIZE = 10;
 
-const fallbackBookings = [
-  {
-    id: 1,
-    staffName: "John Doe",
-    department: "Operations",
-    bookingDate: "2026-06-20",
-    startTime: "09:00",
-    endTime: "11:30",
-    location: "Head Office",
-    purpose: "Client Meeting",
-    status: "approved",
+const EMPTY_SUMMARY = {
+  totals: {
+    total: 0,
+    approved: 0,
+    pending: 0,
+    declined: 0,
+    cancelled: 0,
+    total_hours: 0,
+    average_duration_hours: 0,
+    approval_rate: 0,
+    decline_rate: 0,
+    unique_staff: 0,
+    bookings_per_staff: 0,
+    backlog_hours: 0,
   },
-  {
-    id: 2,
-    staffName: "Jane Smith",
-    department: "Finance",
-    bookingDate: "2026-06-21",
-    startTime: "13:00",
-    endTime: "15:00",
-    location: "Client Office",
-    purpose: "Site Visit",
-    status: "pending",
-  },
-  {
-    id: 3,
-    staffName: "Kwame Mensah",
-    department: "Admin",
-    bookingDate: "2026-06-22",
-    startTime: "08:30",
-    endTime: "10:00",
-    location: "Airport",
-    purpose: "Staff airport Drop Off/Pick up",
-    status: "declined",
-  },
-];
+  top_location: { name: "", count: 0 },
+  peak_hour: { hour: null, count: 0 },
+  by_status: [],
+  daily_hours: [],
+  by_purpose: [],
+  by_department: [],
+  hourly_demand: [],
+  departments: [],
+};
+
+async function readError(res) {
+  try {
+    const body = await res.json();
+    if (body && body.error) return body.error;
+  } catch {
+    // not JSON - fall through to the generic message
+  }
+  return `Server responded ${res.status}`;
+}
 
 function Reports() {
-  const [bookings, setBookings] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [summary, setSummary] = useState(EMPTY_SUMMARY);
+  const [rows, setRows] = useState([]);
+  const [rowsTotal, setRowsTotal] = useState(0);
+  const [loading, setLoading] = useState(true); // first load only - later refreshes keep the page (and filter inputs) mounted
+  const [refreshing, setRefreshing] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [error, setError] = useState(null);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
@@ -88,171 +92,163 @@ function Reports() {
   const [departmentFilter, setDepartmentFilter] = useState("all");
   const [tablePage, setTablePage] = useState(1);
 
+  // The server applies these filters to the figures, the table and the CSV export alike.
+  const filterQuery = useMemo(() => {
+    const params = new URLSearchParams();
+    if (startDate) params.set("from", startDate);
+    if (endDate) params.set("to", endDate);
+    if (statusFilter !== "all") params.set("status", statusLabel(statusFilter));
+    if (departmentFilter !== "all") params.set("department", departmentFilter);
+    return params.toString();
+  }, [departmentFilter, endDate, startDate, statusFilter]);
+
   useEffect(() => {
-    const fetchBookings = async () => {
-      setLoading(true);
+    let cancelled = false;
+
+    const loadSummary = async () => {
+      setRefreshing(true);
       setError(null);
-
       try {
-        const res = await authFetch(`/bookings/schedule_view`);
-        if (!res.ok) throw new Error(`Server responded ${res.status}`);
-
+        const res = await authFetch(`/reports/summary?${filterQuery}`);
+        if (!res.ok) throw new Error(await readError(res));
         const data = await res.json();
-        const remote = Array.isArray(data.bookings) ? data.bookings : [];
-
-        setBookings(
-          remote.map((booking) => ({
-            id: booking.booking_id,
-            staffName: booking.staff_name || "Staff",
-            staffId: booking.staff_id || "",
-            department: booking.department || "Unassigned",
-            bookingDate: booking.booking_date,
-            startTime: booking.start_time,
-            endTime: booking.end_time,
-            location: booking.location || "Not specified",
-            purpose: booking.purpose || "Not specified",
-            status: booking.status ? booking.status.toString().trim().toLowerCase() : "pending",
-            adminComment: booking.admin_comment || "",
-          }))
-        );
+        if (!cancelled) setSummary({ ...EMPTY_SUMMARY, ...data });
       } catch (err) {
-        setError(err.message || "Failed to load report data");
-        setBookings(fallbackBookings);
+        if (!cancelled) setError(err.message || "Failed to load report data");
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
     };
 
-    fetchBookings();
-  }, []);
-
-  const filteredBookings = useMemo(() => {
-    return bookings.filter((booking) => {
-      const matchesStart = !startDate || booking.bookingDate >= startDate;
-      const matchesEnd = !endDate || booking.bookingDate <= endDate;
-      const matchesStatus = statusFilter === "all" || booking.status === statusFilter;
-      const matchesDepartment = departmentFilter === "all" || booking.department === departmentFilter;
-      return matchesStart && matchesEnd && matchesStatus && matchesDepartment;
-    });
-  }, [bookings, departmentFilter, endDate, startDate, statusFilter]);
+    loadSummary();
+    return () => {
+      cancelled = true;
+    };
+  }, [filterQuery]);
 
   useEffect(() => {
     setTablePage(1);
-  }, [startDate, endDate, statusFilter, departmentFilter]);
+  }, [filterQuery]);
 
-  const departments = useMemo(() => {
-    return ["all", ...Array.from(new Set(bookings.map((booking) => booking.department))).sort()];
-  }, [bookings]);
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadRows = async () => {
+      try {
+        const res = await authFetch(`/reports/bookings?${filterQuery}&page=${tablePage}&page_size=${TABLE_PAGE_SIZE}`);
+        if (!res.ok) throw new Error(await readError(res));
+        const data = await res.json();
+        if (cancelled) return;
+        setRows(Array.isArray(data.bookings) ? data.bookings : []);
+        setRowsTotal(data.total || 0);
+      } catch (err) {
+        if (!cancelled) setError(err.message || "Failed to load booking detail");
+      }
+    };
+
+    loadRows();
+    return () => {
+      cancelled = true;
+    };
+  }, [filterQuery, tablePage]);
+
+  const departments = useMemo(() => ["all", ...summary.departments], [summary.departments]);
 
   const analytics = useMemo(() => {
-    const total = filteredBookings.length;
-    const approved = filteredBookings.filter((booking) => booking.status === "approved").length;
-    const pending = filteredBookings.filter((booking) => booking.status === "pending").length;
-    const declined = filteredBookings.filter((booking) => booking.status === "declined").length;
-    const totalHours = filteredBookings.reduce((sum, booking) => sum + durationHours(booking.startTime, booking.endTime), 0);
-    const averageDuration = total ? totalHours / total : 0;
-    const approvalRate = total ? (approved / total) * 100 : 0;
-    const declineRate = total ? (declined / total) * 100 : 0;
-    const uniqueStaff = new Set(filteredBookings.map((booking) => booking.staffName)).size;
-    const topLocation = topEntry(filteredBookings, "location");
-    const avgPerStaff = uniqueStaff ? total / uniqueStaff : 0;
-    const peakHour = topEntry(filteredBookings, (booking) => hourBucketLabel(booking.startTime));
-    const backlogHours = filteredBookings
-      .filter((booking) => booking.status === "pending")
-      .reduce((sum, booking) => sum + durationHours(booking.startTime, booking.endTime), 0);
-
+    const t = summary.totals;
     return {
-      approvalRate,
-      approved,
-      averageDuration,
-      avgPerStaff,
-      backlogHours,
-      declined,
-      declineRate,
-      peakHour,
-      pending,
-      topLocation,
-      total,
-      totalHours,
-      uniqueStaff,
+      approvalRate: t.approval_rate,
+      approved: t.approved,
+      averageDuration: t.average_duration_hours,
+      avgPerStaff: t.bookings_per_staff,
+      backlogHours: t.backlog_hours,
+      declined: t.declined,
+      declineRate: t.decline_rate,
+      peakHour: {
+        name: summary.peak_hour.hour === null ? "" : hourLabel(summary.peak_hour.hour),
+        count: summary.peak_hour.count,
+      },
+      pending: t.pending,
+      topLocation: summary.top_location,
+      total: t.total,
+      totalHours: t.total_hours,
+      uniqueStaff: t.unique_staff,
     };
-  }, [filteredBookings]);
+  }, [summary]);
 
-  const statusData = useMemo(() => {
-    return ["approved", "pending", "declined"].map((status) => ({
-      name: statusLabel(status),
-      value: filteredBookings.filter((booking) => booking.status === status).length,
-      status,
-    }));
-  }, [filteredBookings]);
-
-  const dailyUsage = useMemo(() => {
-    const grouped = filteredBookings.reduce((acc, booking) => {
-      acc[booking.bookingDate] = (acc[booking.bookingDate] || 0) + durationHours(booking.startTime, booking.endTime);
-      return acc;
-    }, {});
-
-    return Object.entries(grouped)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([date, hours]) => ({ date: formatShortDate(date), hours: Number(hours.toFixed(1)) }));
-  }, [filteredBookings]);
-
-  const purposeData = useMemo(() => groupByCount(filteredBookings, "purpose").slice(0, 6), [filteredBookings]);
-  const departmentData = useMemo(
+  const statusData = useMemo(
     () =>
-      groupByCount(filteredBookings, "department")
-        .slice(0, 6)
-        .map((entry, index) => ({ ...entry, fill: CHART_COLORS[index % CHART_COLORS.length] })),
-    [filteredBookings]
+      summary.by_status.map(({ status, value }) => ({
+        name: status,
+        value,
+        status: status.toLowerCase(),
+      })),
+    [summary.by_status]
   );
 
-  const hourlyDemand = useMemo(() => {
-    const buckets = Array.from({ length: 13 }, (_, i) => {
-      const hour = 6 + i;
-      return { hour, label: hourBucketLabel(`${String(hour).padStart(2, "0")}:00`), count: 0 };
-    });
-    const byHour = new Map(buckets.map((bucket) => [bucket.hour, bucket]));
+  const dailyUsage = useMemo(
+    () => summary.daily_hours.map(({ date, hours }) => ({ date: formatShortDate(date), hours })),
+    [summary.daily_hours]
+  );
 
-    filteredBookings.forEach((booking) => {
-      const minutes = timeToMinutes(booking.startTime);
-      if (minutes === null) return;
-      const hour = Math.floor(minutes / 60);
-      const bucket = byHour.get(hour);
-      if (bucket) bucket.count += 1;
-    });
+  const purposeData = useMemo(
+    () => summary.by_purpose.map(({ name, value }) => ({ name, count: value })),
+    [summary.by_purpose]
+  );
 
-    return buckets;
-  }, [filteredBookings]);
+  const departmentData = useMemo(
+    () =>
+      summary.by_department.map(({ name, value }, index) => ({
+        name,
+        count: value,
+        fill: CHART_COLORS[index % CHART_COLORS.length],
+      })),
+    [summary.by_department]
+  );
 
-  const tablePageStart = (tablePage - 1) * TABLE_PAGE_SIZE;
-  const visibleBookings = filteredBookings.slice(tablePageStart, tablePageStart + TABLE_PAGE_SIZE);
+  const hourlyDemand = useMemo(
+    () => summary.hourly_demand.map(({ hour, count }) => ({ hour, label: hourLabel(hour), count })),
+    [summary.hourly_demand]
+  );
 
-  const exportToCSV = () => {
-    const headers = ["Booking Date", "Staff", "Department", "Start", "End", "Duration", "Location", "Purpose", "Status"];
-    const rows = filteredBookings.map((booking) => [
-      booking.bookingDate,
-      booking.staffName,
-      booking.department,
-      booking.startTime,
-      booking.endTime,
-      durationHours(booking.startTime, booking.endTime).toFixed(2),
-      booking.location,
-      booking.purpose,
-      statusLabel(booking.status),
-    ]);
+  const visibleBookings = useMemo(
+    () =>
+      rows.map((booking) => ({
+        id: booking.booking_id,
+        staffName: booking.staff_name || "Staff",
+        department: booking.department || "Unassigned",
+        bookingDate: booking.booking_date,
+        startTime: booking.start_time,
+        endTime: booking.end_time,
+        durationHours: booking.duration_hours,
+        location: booking.location || "Not specified",
+        purpose: booking.purpose || "Not specified",
+        status: booking.status ? booking.status.toString().trim().toLowerCase() : "pending",
+      })),
+    [rows]
+  );
 
-    const csv = [headers, ...rows]
-      .map((row) => row.map((value) => `"${String(value ?? "").replace(/"/g, '""')}"`).join(","))
-      .join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `vehicle-booking-report-${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+  const exportToCSV = async () => {
+    setExporting(true);
+    try {
+      const res = await authFetch(`/reports/export.csv?${filterQuery}`);
+      if (!res.ok) throw new Error(await readError(res));
+      const url = URL.createObjectURL(await res.blob());
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `vehicle-booking-report-${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err.message || "Export failed");
+    } finally {
+      setExporting(false);
+    }
   };
 
   const resetFilters = () => {
@@ -290,7 +286,7 @@ function Reports() {
             </div>
             <p className="m-0 text-[15px] text-[#11233f]">
               <strong className="font-bold">{analytics.approvalRate.toFixed(0)}% approval rate</strong>
-              <span className="text-[#7b8ba5]"> · {analytics.pending} pending · {loading ? "refreshing…" : `${analytics.total} records`}</span>
+              <span className="text-[#7b8ba5]"> · {analytics.pending} pending · {loading || refreshing ? "refreshing…" : `${analytics.total} records`}</span>
             </p>
           </div>
         </div>
@@ -306,7 +302,7 @@ function Reports() {
       {error && (
         <div className="mt-4 flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           <AlertCircle size={18} />
-          <span>Using sample analytics because live reports could not load: {error}</span>
+          <span>Live reports could not load: {error}</span>
         </div>
       )}
 
@@ -332,9 +328,9 @@ function Reports() {
             <button type="button" onClick={resetFilters} className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-50">
               Reset
             </button>
-            <button type="button" onClick={exportToCSV} className="inline-flex items-center gap-2 rounded-xl bg-[#1469e1] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#115cc7]" data-ga-button="reports_export_csv">
+            <button type="button" onClick={exportToCSV} disabled={exporting} className="inline-flex items-center gap-2 rounded-xl bg-[#1469e1] px-4 py-2.5 text-sm font-bold text-white hover:bg-[#115cc7] disabled:opacity-60" data-ga-button="reports_export_csv">
               <Download size={16} />
-              Export CSV
+              {exporting ? "Exporting…" : "Export CSV"}
             </button>
           </div>
         </div>
@@ -352,6 +348,7 @@ function Reports() {
               <option value="approved">Approved</option>
               <option value="pending">Pending</option>
               <option value="declined">Declined</option>
+              <option value="cancelled">Cancelled</option>
             </select>
           </FilterField>
           <FilterField label="Department">
@@ -468,7 +465,7 @@ function Reports() {
           </div>
           <span className="inline-flex w-fit items-center gap-2 rounded-full bg-blue-50 px-3 py-2 text-sm font-bold text-blue-700">
             <Filter size={15} />
-            {filteredBookings.length} shown
+            {rowsTotal} matching
           </span>
         </div>
 
@@ -493,7 +490,7 @@ function Reports() {
                   <td className="truncate border-b border-slate-100 px-4 py-[18px] text-sm font-semibold text-[#11233f]">{booking.staffName}</td>
                   <td className="hidden truncate border-b border-slate-100 px-4 py-[18px] text-sm text-slate-600 lg:table-cell">{booking.department}</td>
                   <td className="truncate border-b border-slate-100 px-4 py-[18px] text-sm text-slate-600">{booking.startTime} - {booking.endTime}</td>
-                  <td className="hidden truncate border-b border-slate-100 px-4 py-[18px] text-sm text-slate-600 lg:table-cell">{durationHours(booking.startTime, booking.endTime).toFixed(1)}</td>
+                  <td className="hidden truncate border-b border-slate-100 px-4 py-[18px] text-sm text-slate-600 lg:table-cell">{Number(booking.durationHours || 0).toFixed(1)}</td>
                   <td className="truncate border-b border-slate-100 px-4 py-[18px] text-sm text-slate-600">{booking.purpose}</td>
                   <td className="hidden truncate border-b border-slate-100 px-4 py-[18px] text-sm text-slate-600 md:table-cell">{booking.location}</td>
                   <td className="border-b border-slate-100 px-4 py-[18px] text-sm">
@@ -507,7 +504,7 @@ function Reports() {
           </table>
         </div>
 
-        <Pagination currentPage={tablePage} onPageChange={setTablePage} pageSize={TABLE_PAGE_SIZE} totalItems={filteredBookings.length} />
+        <Pagination currentPage={tablePage} onPageChange={setTablePage} pageSize={TABLE_PAGE_SIZE} totalItems={rowsTotal} />
       </section>
         </>
       )}
@@ -595,31 +592,11 @@ function FilterField({ children, label }) {
   );
 }
 
-function durationHours(start, end) {
-  const startMinutes = timeToMinutes(start);
-  const endMinutes = timeToMinutes(end);
-  if (startMinutes === null || endMinutes === null || endMinutes <= startMinutes) return 0;
-  return (endMinutes - startMinutes) / 60;
-}
-
 function timeToMinutes(value) {
   if (!value) return null;
   const [hour, minute] = value.split(":").map(Number);
   if (Number.isNaN(hour) || Number.isNaN(minute)) return null;
   return hour * 60 + minute;
-}
-
-function groupByCount(items, key) {
-  const selector = typeof key === "function" ? key : (item) => item[key];
-  const grouped = items.reduce((acc, item) => {
-    const label = selector(item) || "Not specified";
-    acc[label] = (acc[label] || 0) + 1;
-    return acc;
-  }, {});
-
-  return Object.entries(grouped)
-    .map(([name, count]) => ({ name, count }))
-    .sort((a, b) => b.count - a.count);
 }
 
 function hourBucketLabel(startTime) {
@@ -631,8 +608,8 @@ function hourBucketLabel(startTime) {
   return `${displayHour}:00 ${period}`;
 }
 
-function topEntry(items, key) {
-  return groupByCount(items, key)[0] || { name: "", count: 0 };
+function hourLabel(hour) {
+  return hourBucketLabel(`${String(hour).padStart(2, "0")}:00`);
 }
 
 function formatShortDate(value) {
@@ -651,6 +628,7 @@ function statusLabel(status) {
 function statusBadgeClass(status) {
   if (status === "approved") return "bg-emerald-50 text-emerald-700";
   if (status === "declined") return "bg-rose-50 text-rose-700";
+  if (status === "cancelled") return "bg-slate-100 text-slate-600";
   return "bg-amber-50 text-amber-700";
 }
 
