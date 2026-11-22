@@ -1,4 +1,4 @@
-# 🚗 VISAL Vehicle Booking System
+# VISAL Vehicle Booking System
 
 ![React](https://img.shields.io/badge/Frontend-React-61DAFB?logo=react)
 ![Flask](https://img.shields.io/badge/Backend-Flask-000000?logo=flask)
@@ -11,27 +11,27 @@ A full-stack vehicle booking management system for staff vehicle requests and ad
 
 ---
 
-## 📋 Table of Contents
+## Table of Contents
 
-- [Features](#-features)
-- [Tech Stack](#-tech-stack)
-- [Quick Start](#-quick-start)
-- [Documentation](#-documentation)
-- [Testing](#-testing)
-- [Future Improvements](#-future-improvements)
-- [License](#-license)
+- [Features](#features)
+- [Tech Stack](#tech-stack)
+- [Quick Start](#quick-start)
+- [Documentation](#documentation)
+- [Testing](#testing)
+- [Future Improvements](#future-improvements)
+- [License](#license)
 
 ---
 
-## ✨ Features
+## Features
 
-### 👤 Staff Features
+### Staff Features
 - Secure JWT-based login
 - Submit vehicle booking requests
 - View personal booking history and status
 - Real-time booking status updates
 
-### 🛠 Admin Features
+### Admin Features
 - Approve or decline booking requests
 - Add comments to decisions
 - View all bookings and schedule conflicts
@@ -41,7 +41,7 @@ A full-stack vehicle booking management system for staff vehicle requests and ad
 - Settings for booking rules, schedule defaults, notifications and audit-log retention
 - Support inbox, broadcast email and an audit trail
 
-### 🔐 Security & Notifications
+### Security & Notifications
 - Role-based access control (Staff/Admin)
 - JWT authentication with protected routes; sessions end immediately on logout, deactivation or a role change
 - Login lockout after repeated failed attempts
@@ -51,7 +51,7 @@ A full-stack vehicle booking management system for staff vehicle requests and ad
 
 ---
 
-## 🧱 Tech Stack
+## Tech Stack
 
 ### Frontend
 - **React** with Vite
@@ -72,7 +72,7 @@ A full-stack vehicle booking management system for staff vehicle requests and ad
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 - Python 3.10+ (Windows)
@@ -115,7 +115,7 @@ See `frontend/frontend_ui_update.md` for test admin and staff accounts.
 
 ---
 
-## 📚 Documentation
+## Documentation
 
 For detailed information, refer to the dedicated documentation files:
 
@@ -126,7 +126,7 @@ These files contain comprehensive guides for development, API usage, and project
 
 ---
 
-## 🧪 Testing
+## Testing
 
 ### Backend Tests
 ```bash
@@ -143,7 +143,7 @@ npm run test
 
 ---
 
-## 🔮 Future Improvements
+## Future Improvements
 
 - Vehicles and drivers (assign a vehicle to a booking, detect double-booking, maintenance blocks)
 - Booking edit/reschedule and a trip lifecycle (started, completed, no-show)
@@ -153,7 +153,7 @@ npm run test
 
 ---
 
-## 📜 License
+## License
 
 No license file is currently attached.
 
@@ -163,7 +163,7 @@ Until a license is added, this project is:
 
 ---
 
-## 👨‍💻 Author
+## Author
 
 Developed as a comprehensive vehicle booking system for efficient fleet management and approval workflows.
 
