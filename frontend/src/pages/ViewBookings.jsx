@@ -17,7 +17,7 @@ import {
   X,
   XCircle,
 } from "lucide-react";
-import { API_BASE_URL } from "../config.js";
+import { authFetch } from "../utils/api.js";
 import { cancelBookingAPI } from "../utils/bookings.js";
 import { isPastBooking } from "../utils/approvals.js";
 import InfoButton from "../components/InfoButton";
@@ -61,7 +61,7 @@ function ViewBookings() {
     const staffId = stored ? stored : "1";
 
     try {
-      const res = await fetch(`${API_BASE_URL}/bookings/staff/${staffId}`);
+      const res = await authFetch(`/bookings/staff/${staffId}`);
       if (!res.ok) {
         throw new Error(`Server responded ${res.status}`);
       }

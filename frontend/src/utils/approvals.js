@@ -1,5 +1,6 @@
 // src/api/approvals.js
 import { API_BASE_URL } from '../config.js';
+import { authFetch } from './api.js';
 
 const API_BASE = API_BASE_URL;
 
@@ -15,7 +16,7 @@ const parseJsonSafe = async (res) => {
    FETCH APPROVAL BOOKINGS
 ================================ */
 export const fetchApprovalBookings = async () => {
-  const res = await fetch(`${API_BASE}/bookings/schedule_view`);
+  const res = await authFetch(`/bookings/schedule_view`);
   if (!res.ok) {
     throw new Error(`Server responded ${res.status}`);
   }

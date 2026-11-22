@@ -16,7 +16,7 @@ import {
   Search,
   X,
 } from "lucide-react";
-import { API_BASE_URL } from "../config.js";
+import { authFetch } from "../utils/api.js";
 import { colorForName } from "../utils/avatar.js";
 import InfoButton from "../components/InfoButton";
 import Modal from "../components/Modal";
@@ -90,7 +90,7 @@ function ScheduleView() {
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch(`${API_BASE_URL}/bookings/schedule_view`);
+        const res = await authFetch(`/bookings/schedule_view`);
         if (!res.ok) throw new Error(`Server responded ${res.status}`);
         const data = await res.json();
         const remote = Array.isArray(data.bookings) ? data.bookings : [];

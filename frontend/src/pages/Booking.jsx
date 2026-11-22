@@ -17,6 +17,7 @@ import BookingModal from "../components/BookingModal";
 import InfoButton from "../components/InfoButton";
 import Spinner from "../components/Spinner";
 import { API_BASE_URL } from "../config.js";
+import { authFetch } from "../utils/api.js";
 import { useSettings } from "../hooks/useSettings.js";
 import useGreeting from "../hooks/useGreeting.js";
 
@@ -56,7 +57,7 @@ function Booking() {
 
     setUpcomingLoading(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/bookings/staff/${staffId}`);
+      const res = await authFetch(`/bookings/staff/${staffId}`);
       if (!res.ok) throw new Error(`Server responded ${res.status}`);
       const data = await res.json();
       const remote = Array.isArray(data.bookings) ? data.bookings : [];
