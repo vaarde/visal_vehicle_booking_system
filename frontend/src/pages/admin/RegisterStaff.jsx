@@ -3,6 +3,7 @@ import { AlertCircle, CheckCircle2, Eye, EyeOff, Shield, UserPlus } from "lucide
 import { API_BASE_URL } from "../../config.js";
 import InfoButton from "../../components/InfoButton";
 import Modal from "../../components/Modal";
+import StaffImport from "../../components/StaffImport";
 import useGreeting from "../../hooks/useGreeting.js";
 
 const inputSharedClass =
@@ -223,6 +224,8 @@ export default function RegisterStaff() {
           </form>
         </div>
       </section>
+
+      <StaffImport />
     </div>
   );
 }
