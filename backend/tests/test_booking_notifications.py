@@ -5,6 +5,7 @@ from flask_jwt_extended import create_access_token
 from app import db
 from app.models.bookings import Booking
 from app.models.notifications import Notification
+from app.services.settings_service import get_settings
 
 
 class TestBookingNotifications:
@@ -137,8 +138,12 @@ class TestBookingNotifications:
             assert 'Comment:' not in notification.message
 
     def test_decline_booking_without_comment(self, client, test_admin, test_booking):
-        """Test declining a booking without admin comment."""
+        """Test declining a booking without admin comment (only allowed when the reason rule is off)."""
         with client.application.app_context():
+            settings = get_settings()
+            settings.require_decline_reason = False
+            db.session.commit()
+
             # Create access token for admin
             access_token = create_access_token(identity=test_admin.staff_id, additional_claims={'role': 'admin'})
 
@@ -222,14 +227,14 @@ class TestBookingNotifications:
             client.patch(
                 f'/bookings/{test_booking.id}/decline',
                 headers={'Authorization': f'Bearer {access_token}'},
-                json={}
+                json={'admin_comment': 'No vehicle available'}
             )
 
             # Try to decline again
             response = client.patch(
                 f'/bookings/{test_booking.id}/decline',
                 headers={'Authorization': f'Bearer {access_token}'},
-                json={}
+                json={'admin_comment': 'No vehicle available'}
             )
 
             assert response.status_code == 400
@@ -295,7 +300,7 @@ class TestBookingNotifications:
             response = client.patch(
                 f'/bookings/{test_booking.id}/decline',
                 headers={'Authorization': f'Bearer {access_token}'},
-                json={}
+                json={'admin_comment': 'Declined for timestamp test'}
             )
 
             assert response.status_code == 200
