@@ -41,6 +41,8 @@ def create_app(config_class=None):
     from .routes.settings import settings_bp
     from .routes.support import support_bp
     from .routes.broadcast import broadcast_bp
+    from .routes.reports import reports_bp
+    from .routes.staff_import import staff_import_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(bookings_bp)
@@ -50,6 +52,8 @@ def create_app(config_class=None):
     app.register_blueprint(settings_bp)
     app.register_blueprint(support_bp)
     app.register_blueprint(broadcast_bp)
+    app.register_blueprint(reports_bp)
+    app.register_blueprint(staff_import_bp)
 
     # JWT token initialization
     jwt = JWTManager(app)
@@ -89,5 +93,9 @@ def create_app(config_class=None):
     if app.config.get('START_EMAIL_SCHEDULER', False) and not app.config.get('TESTING', False):
         from .services.summary_scheduler import start_daily_summary_scheduler
         start_daily_summary_scheduler(app)
+
+    from .cli import register_cli
+
+    register_cli(app)
 
     return app

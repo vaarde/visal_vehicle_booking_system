@@ -1,4 +1,5 @@
 import pytest
+from datetime import datetime, timedelta
 import json
 from unittest.mock import patch, MagicMock
 from flask_jwt_extended import create_access_token
@@ -69,7 +70,7 @@ class TestBookingNotifications:
             assert updated_booking.status == 'Declined'
             assert updated_booking.admin_comment == 'Declined for testing'
 
-    @patch('app.routes.bookings.send_booking_notification')
+    @patch('app.services.booking_service.send_booking_notification')
     def test_approve_booking_sends_email(self, mock_send_email, client, test_admin, test_booking):
         """Test that approving a booking sends an email notification."""
         with client.application.app_context():
@@ -92,7 +93,7 @@ class TestBookingNotifications:
             assert 'Booking Approved' in call_args[0][1]  # subject
             assert 'Approved for testing' in call_args[0][2]  # body
 
-    @patch('app.routes.bookings.send_booking_notification')
+    @patch('app.services.booking_service.send_booking_notification')
     def test_decline_booking_sends_email(self, mock_send_email, client, test_admin, test_booking):
         """Test that declining a booking sends an email notification."""
         with client.application.app_context():
@@ -274,6 +275,9 @@ class TestBookingNotifications:
     def test_approve_booking_updates_timestamp(self, client, test_admin, test_booking):
         """Test that approving a booking updates the updated_at timestamp."""
         with client.application.app_context():
+            # backdate it so the assertion does not depend on the clock ticking between two fast calls
+            test_booking.updated_at = datetime.utcnow() - timedelta(hours=1)
+            db.session.commit()
             original_updated_at = test_booking.updated_at
 
             access_token = create_access_token(identity=test_admin.staff_id, additional_claims={'role': 'admin'})
@@ -293,6 +297,9 @@ class TestBookingNotifications:
     def test_decline_booking_updates_timestamp(self, client, test_admin, test_booking):
         """Test that declining a booking updates the updated_at timestamp."""
         with client.application.app_context():
+            # backdate it so the assertion does not depend on the clock ticking between two fast calls
+            test_booking.updated_at = datetime.utcnow() - timedelta(hours=1)
+            db.session.commit()
             original_updated_at = test_booking.updated_at
 
             access_token = create_access_token(identity=test_admin.staff_id, additional_claims={'role': 'admin'})

@@ -6,6 +6,6 @@ app = create_app()
 with app.app_context():
     try:
         db.session.execute(text("SELECT 1"))  # wrap SQL in text()
-        print("Database connection OK ✅")
+        print("Database connection OK")
     except Exception as e:
-        print("Database connection failed ❌", e)
+        print("Database connection failed", e)
